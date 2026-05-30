@@ -1,11 +1,9 @@
-# Docker Hardening Hub v0.8
-# build pe doua stadii: Node pentru frontend, apoi Python ca runtime
+# Docker Image Testing Hub - v1
+# build in doua stadii: Node pentru frontend, Python ca runtime
 # scannere: Hadolint (linting static) + Trivy (configurari + CVE pe imaginea
 # de baza) + OSV/NVD (CVE pe pachete) + analizoarele CIS + Dive (eficienta
 # straturilor, prin pipeline-ul separat de analiza a imaginii)
-# backend fara stare: fara baza de date, fara volum persistent; istoricul
-# scanarilor sta in browser (localStorage)
-# fara Podman, fara sandbox, fara --privileged, fara flaguri speciale
+# backend stateless. istoricul e in localStorage
 # pornire: podman run -d -p 8080:8080 licenta:latest
 
 # stadiul 1: construiesc frontendul React
@@ -20,13 +18,10 @@ RUN npm run build
 # stadiul 2: runtime
 FROM docker.io/library/python:3.12-slim-bookworm
 
-LABEL maintainer="security-tools@example.com"
-LABEL description="Docker Hardening Hub — Dockerfile + image security scanner"
-
 ENV DEBIAN_FRONTEND=noninteractive
 
 # dependinte de sistem: nginx, supervisor, curl, skopeo (aduce imaginea din
-# registru ca arhiva, fara demon); un singur strat, cu curatare agresiva
+# registru ca arhiva, fara daemon)
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
         nginx \
@@ -51,8 +46,8 @@ RUN curl -fsSL \
     dpkg -i /tmp/trivy.deb && \
     rm /tmp/trivy.deb
 
-# Dive, analizorul de eficienta a straturilor pentru pipeline-ul de imagine
-# citeste direct arhive docker-archive, fara demon
+# Dive, analiza de eficienta a straturilor din imagine
+# citeste direct arhive docker-archive
 ARG DIVE_VERSION=0.13.1
 RUN curl -fsSL \
         "https://github.com/wagoodman/dive/releases/download/v${DIVE_VERSION}/dive_${DIVE_VERSION}_linux_amd64.tar.gz" \
@@ -65,9 +60,8 @@ RUN curl -fsSL \
 COPY backend/requirements.txt /tmp/requirements.txt
 RUN pip install --no-cache-dir -r /tmp/requirements.txt && rm /tmp/requirements.txt
 
-# utilizator non-root; arhivele de imagine sunt scrise in /tmp de catre ruta
-# (temporar, curatate de procesul de lucru dupa fiecare job); nu am nevoie de
-# volum persistent, istoricul sta in localStorage-ul browserului
+# utilizator non-root; arhivele de imagine sunt scrise in /tmp
+# arhivele sunt temporare si sterse de procesul de curatare dupa fiecare job
 RUN useradd -u 1000 -m -s /bin/sh appuser && \
     mkdir -p /app && \
     chown -R appuser:appuser /app

@@ -7,6 +7,11 @@ const LEVEL_COLORS = {
   info: '#4aa3e6',
   style: '#8593a8',
   ignore: '#6a8198',
+  critical: '#e5484d', // trivy are denumiri diferite pentru severitate
+  high: '#f0663f',
+  medium: '#e0982e',
+  low: '#4aa3e6',
+  unknown: '#8593a8',
   start: '#2fa86a',
   done: '#2fa86a',
   summary: '#2fa86a',

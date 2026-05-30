@@ -1,11 +1,11 @@
-// salvez istoricul scanarilor in localStorage-ul navigatorului
-// backendul nu tine stare: scanarile gata vin in evenimentul de finalizare
-// ca inregistrare completa, eu o adaug aici si afisez istoricul direct de aici
-// localStorage are de obicei ~5 MB, iar o scanare cu tot continutul si jurnalul
-// poate avea 50-200 KB; limitez la MAX_ENTRIES, iar daca scrierea pica pe
-// QuotaExceededError, arunc cele mai vechi intrari una cate una pana incape
+// salvez istoricul scanarilor in localStorage
+// backendul e stateless: scanarile finalizate le primesc in eventul de finalizare
+// => adaug scanarea in localStorage si o trag de aici in caz ca e nevoie
+// localStorage are de obicei ~5 MB, iar o scanare cu tot continutul si loguri
+// poate avea cam 50-200 KB; limitez historyul prin MAX_ENTRIES, iar daca scrierea pica pe
+// QuotaExceededError, sterg cele mai vechi intrari una cate una pana incape
 
-const KEY     = 'dhh_history_v1'
+const KEY     = 'dith_history'
 const MAX_ENTRIES = 50
 
 function safeParse(raw) {
@@ -18,19 +18,19 @@ function safeParse(raw) {
   }
 }
 
-// citesc tot istoricul, cele mai noi primele
+// citesc tot istoricul, sortate descendent dupa data
 export function loadHistory() {
   try {
     return safeParse(localStorage.getItem(KEY))
   } catch {
-    // localStorage indisponibil (mod privat etc.), ma opresc fara zgomot
+    // localStorage indisponibil (mod privat, etc.) => intorc array gol pentru a evita erori
     return []
   }
 }
 
-// inlocuiesc tot istoricul cu entries; intorc true daca a mers
+// inlocuiesc tot istoricul cu entries; intorc true daca a functionat
 export function saveHistory(entries) {
-  // ordonez cu cele mai noi primele si tai la MAX_ENTRIES
+  // sortez descendent dupa data si fac slice la MAX_ENTRIES
   const sorted = [...entries].sort((a, b) =>
     (b.created_at || '').localeCompare(a.created_at || '')
   ).slice(0, MAX_ENTRIES)
@@ -39,14 +39,14 @@ export function saveHistory(entries) {
     localStorage.setItem(KEY, JSON.stringify(sorted))
     return true
   } catch (e) {
-    // cota depasita, arunc cele mai vechi una cate una si reincerc
+    // prea multe entries => slice la cele mai vechi pana incape cea curenta
     let trimmed = sorted.slice()
     while (trimmed.length > 1) {
       trimmed.pop()  // scot cea mai veche
       try {
         localStorage.setItem(KEY, JSON.stringify(trimmed))
         return true
-      } catch { /* continui sa tai */ }
+      } catch { /* daca e vreo eroare, ne intoarcem in loop, nu oprim flowul */ }
     }
     return false
   }

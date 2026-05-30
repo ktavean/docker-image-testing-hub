@@ -1,5 +1,5 @@
 {
-  "name": "docker-hardening-hub",
+  "name": "docker-image-testing-hub",
   "private": true,
   "version": "0.1.0",
   "type": "module",

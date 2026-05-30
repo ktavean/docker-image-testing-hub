@@ -14,21 +14,20 @@ export default function App() {
   const [currentScanId, setCurrentScanId] = useState(null)
   const [summary,       setSummary]       = useState(null)
   const [jobKind,       setJobKind]       = useState('dockerfile_compose')
-  // inregistrarea completa a scanarii vizionate acum (activa sau din istoric)
-  // o foloseste RemediatePanel si descarcarea raportului, fiindca backendul nu
-  // tine stare si are nevoie de continutul fisierelor in cerere
+  // inregistrarea completa a scanarii (activa sau din istoric)
+  // folosita de RemediatePanel si pentru descarcarea raportului -> backendul
+  // e stateless, nu are baza de date => are nevoie de continutul fisierelor on-demand
   const [activeScan,    setActiveScan]    = useState(null)
-  // lista de istoric; o incarc o data la montare, apoi o actualizez local
+  // lista istoric scanare; incarcata o data la montare, apoi actualizata local
   // cand se termina o scanare sau cand utilizatorul sterge o intrare
   const [history,       setHistory]       = useState([])
 
-  // incarc din localStorage la prima randare
+  // incarc din localStorage la prima randare a DOMului
   useEffect(() => { setHistory(loadHistory()) }, [])
 
-  // ma abonez la /api/jobs/{id}/stream si alimentez interfata pe masura ce vin evenimente
-  // backendul pune inregistrarea completa in evenimentul de finalizare, deci nu
-  // mai cer nimic cu GET; scriu in localStorage DOAR la finalizare, asa ca daca
-  // utilizatorul reincarca pagina in timpul scanarii, fluxul se pierde si nu se salveaza nimic
+  // ascult streamul de la /api/jobs/{id}/stream si adaug evenimentele in interfata pe masura ce le primesc
+  // rezultatul complet vine in evenimentul de la final -> nu dau un GET separat
+  // salvez in localStorage doar la final => reload in timpul scanarii pierde tot
   const consumeStream = useCallback(async (job_id, kind) => {
     setCurrentScanId(job_id)
     setJobKind(kind)
@@ -37,8 +36,8 @@ export default function App() {
       const streamRes = await fetch(`/api/jobs/${job_id}/stream`)
       if (!streamRes.ok) throw new Error(`Stream failed: ${streamRes.status}`)
 
-      // citesc octetii bruti si parsez SSE de mana; EventSource nu suporta POST,
-      // si oricum vreau control deplin pe reconectare si anulare
+      // citesc streamul si parsez SSE; EventSource nu suporta POST,
+      // si oricum vreau control pe reconectare si anulare
       const reader  = streamRes.body.getReader()
       const decoder = new TextDecoder()
       let buffer = ''
@@ -46,7 +45,7 @@ export default function App() {
       while (true) {
         const { done, value } = await reader.read()
         if (done) break
-        // un fragment poate taia un mesaj JSON in doua, asa ca adaug in buffer,
+        // un fragment poate taia un mesaj JSON in doua, asa ca adaug mesajul in buffer,
         // impart pe linii noi si pastrez ultima linie (posibil incompleta) pentru
         // iteratia urmatoare
         buffer += decoder.decode(value, { stream: true })
@@ -72,21 +71,21 @@ export default function App() {
               continue
             }
 
-            // evenimentul final; event.scan e inregistrarea completa facuta de
+            // evenimentul final; event.scan contine rezultatul complet trimis de
             // backend, aceeasi forma pe care o salvez in localStorage
             if (event.type === 'finish') {
               const scan = event.scan
               if (scan) {
-                // salvez scanarile completed/failed/cancelled; sar daca starea
-                // lipseste cumva (n-ar trebui sa se intample in practica)
+                // salvez scanarile completed/failed/cancelled; skip daca starea
+                // lipseste cumva (desi nu cred ca o sa se intample)
                 if (scan.job_status) {
                   appendScan(scan)
                   setHistory(loadHistory())
                 }
                 setActiveScan(scan)
 
-                // joburile de imagine n-au eveniment de sumar separat in flux,
-                // asa ca aici construiesc datele pentru panou din inregistrarea finala
+                // joburile de imagine n-au event de sumar separat in flow,
+                // asa ca aici construiesc datele pentru panou din rezultatul final
                 if (kind === 'image') {
                   setSummary({
                     verdict:        scan.verdict,
@@ -94,8 +93,8 @@ export default function App() {
                     ...(scan.summary || {}),
                   })
                 } else {
-                  // la scanarile de sursa pastrez contoarele din evenimentul de
-                  // sumar anterior si adaug peste verdictul si punctajul final
+                  // la scanarile de sursa pastrez numarul de probleme per scanner din
+                  // summaryul anterior si adaug peste verdictul si punctajul final
                   setSummary(prev => ({
                     ...(prev || {}),
                     verdict:        scan.verdict,
@@ -109,7 +108,7 @@ export default function App() {
 
             setLogs(prev => [...prev, event])
           } catch {
-            // linie JSON stricata; o sar in loc sa opresc tot fluxul
+            // daca e vreo linie JSON stricata, o sar in loc sa opresc tot flowul
           }
         }
       }
@@ -120,7 +119,7 @@ export default function App() {
     }
   }, [])
 
-  // trimiterea scanarii Dockerfile / Compose
+  // POST scan Dockerfile / Compose
   const handleScan = useCallback(async (filesArr, selection, imageInput = null) => {
     setScanning(true); setLogs([]); setSummary(null); setCurrentScanId(null)
 
@@ -129,7 +128,7 @@ export default function App() {
     for (const f of arr) formData.append('files', f, f.name)
     if (selection) formData.append('scanners', JSON.stringify(selection))
 
-    // extra pentru scanarea combinata: tinta optionala de dupa construire
+    // scanare combinata cu imaginea construita (daca a fost uploadata)
     if (imageInput) {
       if (imageInput.kind === 'tarball' && imageInput.file) {
         formData.append('image_tarball', imageInput.file, imageInput.file.name)
@@ -146,7 +145,7 @@ export default function App() {
       }
       const { job_id, kind } = await submitRes.json()
       // serverul imi spune ce pipeline a ales: 'dockerfile_compose', 'combined'
-      // sau 'image'; folosesc asta ca sa stiu ce sa afisez mai departe
+      // sau 'image'. folosesc asta ca sa stiu ce sa afisez mai departe
       await consumeStream(job_id, kind || 'dockerfile_compose')
     } catch (e) {
       setLogs(prev => [...prev, { tool: 'system', type: 'error', message: `✗ ${e.message}` }])
@@ -154,9 +153,9 @@ export default function App() {
     }
   }, [consumeStream])
 
-  // incarc o scanare veche din localStorage inapoi in vederea activa
-  // reconstruiesc starea panoului de sumar de la zero, fiindca nu e salvata
-  // separat; singura inregistrare adevarata e scanarea in sine
+  // incarc o scanare veche din localStorage si o afisez
+  // reconstruiesc panoul de sumar de la zero, fiindca nu e salvat separat;
+  // singurul lucru salvat e scanarea in sine
   const handleSelectHistoryScan = useCallback((scanId) => {
     const scan = getScan(scanId)
     if (!scan) return
@@ -172,8 +171,8 @@ export default function App() {
         ...(scan.summary || {}),
       })
     } else {
-      // iau contoarele per instrument din evenimentul de sumar daca exista in
-      // jurnal; daca nu, folosesc contoarele de pe inregistrarea scanarii
+      // iau numarul de evenimente per instrument din summary daca exista in
+      // loguri; daca nu, folosesc totalurile de pe scanarea salvata ca backup
       const summaryEvent = (scan.events || []).find(e => e.type === 'summary')
       setSummary({
         hadolint:       summaryEvent?.hadolint ?? scan.hadolint_issues ?? 0,
