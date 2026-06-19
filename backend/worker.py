@@ -1,7 +1,7 @@
 # procesul care lucreaza in fundal: ia joburi din coada, ruleaza scanarea
-# potrivita si trimite evenimentele mai departe spre SSE
-# evenimentul de finalizare duce tot rezultatul, ca frontendul sa-l salveze
-# in localStorage fara sa mai ceara inca o data
+# specifica si trimite evenimentele mai departe spre SSE
+# evenimentul de finalizare trimite tot rezultatul. frontendul il salveze
+# in localStorage fara sa il mai ceara inca o data
 import asyncio
 import logging
 import os
@@ -37,7 +37,7 @@ async def _drain(
         events.append(ev)
         await job.events_q.put(ev)
 
-    # Coroutina interioara e cea pe care o cronometreaza asyncio.wait_for.
+    # corutina interioara e cea pe care o cronometreaza asyncio.wait_for.
     # Verificam semnalul de anulare intre evenimente: asta e granularitatea
     # anularii. Un scaner aflat in mijlocul unui subproces nu poate fi
     # intrerupt, dar fiecare scaner are propria limita de timp (in
