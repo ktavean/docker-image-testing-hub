@@ -46,9 +46,6 @@ app.include_router(report.router,     prefix="/api", tags=["report"])
 async def health():
     return {"status": "ok", "version": "0.8.0"}
 
-
-# in productie servesc aplicatia SPA gata construita
-# local sar peste, ca acolo frontendul merge separat pe Vite
 STATIC_DIR = "/app/static"
 if os.path.exists(STATIC_DIR):
     app.mount("/assets", StaticFiles(directory=f"{STATIC_DIR}/assets"), name="assets")
